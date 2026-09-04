@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Escáner de números</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg: #FAFAF7;
+    --ink: #232420;
+    --ink-soft: #6B6B63;
+    --petrol: #114B45;
+    --petrol-dim: #E4ECEA;
+    --gold: #A5762F;
+    --error: #A8442E;
+    --error-dim: #F3E4E0;
+    --card: #FFFFFF;
+    --line: #E4E1D8;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body{
+    min-height: 100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 28px 20px 40px;
+  }
+  .wrap{ width:100%; max-width: 420px; }
+  header{ margin-bottom: 18px; }
+  h1{
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    color: var(--ink);
+  }
+  header p{
+    margin:0;
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height:1.4;
+  }
+
+  #reader-frame{
+    position:relative;
+    border-radius: 18px;
+    overflow:hidden;
+    background:#000;
+    aspect-ratio: 1 / 1;
+    border: 1px solid var(--line);
+  }
+  #reader{ width:100%; height:100%; }
+  #reader video{ object-fit: cover; }
+  /* html5-qrcode injects its own controls/border; keep it minimal */
+  #reader__scan_region img{ display:none; }
+  #reader__dashboard{ display:none !important; }
+
+  .scan-hint{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .scan-hint .box{
+    width: 62%; aspect-ratio:1/1;
+    border: 2.5px solid rgba(255,255,255,.85);
+    border-radius: 14px;
+    box-shadow: 0 0 0 999px rgba(0,0,0,.28);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{ border-color: rgba(255,255,255,.55); }
+    50%{ border-color: rgba(255,255,255,.95); }
+  }
+
+  .permission-gate{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px;
+    padding: 28px;
+    text-align:center;
+    background: linear-gradient(180deg, #16302C, #0C1F1C);
+  }
+  .permission-gate.hidden{ display:none; }
+  .permission-gate .icon{
+    width:46px; height:46px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .permission-gate .icon svg{ width:22px; height:22px; }
+  .permission-gate p{
+    margin:0;
+    color: rgba(255,255,255,.82);
+    font-size: 13.5px;
+    line-height:1.5;
+    max-width: 260px;
+  }
+  .permission-gate button{
+    background: #fff;
+    color: var(--petrol);
+    padding: 12px 22px;
+  }
+  .permission-gate .denied{
+    color: #F4C7BC;
+    font-size: 13px;
+    display:none;
+  }
+  .permission-gate.denied-state .denied{ display:block; }
+  .permission-gate.denied-state button{ background: var(--gold); color:#fff; }
+
+  .result-card{
+    margin-top: 18px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 26px 20px;
+    text-align:center;
+    display:none;
+  }
+  .result-card.show{ display:block; }
+  .result-label{
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 0 0 6px;
+  }
+  .result-number{
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 700;
+    font-size: 64px;
+    line-height: 1;
+    color: var(--petrol);
+    margin: 0;
+  }
+
+  .actions{
+    margin-top: 16px;
+    display:flex;
+    gap: 10px;
+  }
+  button{
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 12px;
+    border: none;
+    padding: 14px 18px;
+    cursor:pointer;
+    transition: transform .08s ease, opacity .15s ease;
+  }
+  button:active{ transform: scale(0.97); }
+  button:disabled{ opacity:.55; cursor:default; }
+
+  .btn-primary{
+    flex: 1.4;
+    background: var(--petrol);
+    color: #fff;
+  }
+  .btn-secondary{
+    flex: 1;
+    background: var(--petrol-dim);
+    color: var(--petrol);
+  }
+
+  .status{
+    margin-top: 14px;
+    min-height: 20px;
+    font-size: 14px;
+    text-align:center;
+  }
+  .status.ok{ color: var(--petrol); }
+  .status.err{ color: var(--error); }
+  .status.pending{ color: var(--ink-soft); }
+
+  .manual{
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .manual summary{
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor:pointer;
+  }
+  .manual-row{
+    display:flex;
+    gap:8px;
+    margin-top: 10px;
+  }
+  .manual-row input{
+    flex:1;
+    font-size:16px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    font-family: inherit;
+  }
+  .manual-row button{
+    background: var(--petrol-dim);
+    color: var(--petrol);
+    padding: 12px 16px;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Escáner de números</h1>
+      <p>Apuntá la cámara al código QR. El número aparece solo.</p>
+    </header>
+
+    <div id="reader-frame">
+      <div id="reader"></div>
+      <div class="scan-hint" id="scanHint" style="display:none;"><div class="box"></div></div>
+      <div class="permission-gate" id="permissionGate">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><path d="M4 8a2 2 0 0 1 2-2h1.2a1 1 0 0 0 .89-.55l.55-1.1A1 1 0 0 1 9.53 4h4.94a1 1 0 0 1 .89.55l.55 1.1a1 1 0 0 0 .9.55H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.3"/></svg>
+        </div>
+        <p id="gateText">Esta app necesita la cámara para leer el código QR.</p>
+        <p class="denied" id="gateDenied">Parece que el permiso quedó bloqueado. Abrí el ícono de candado junto a la dirección del navegador y habilitá la cámara para este sitio.</p>
+        <button id="enableCameraBtn">Activar cámara</button>
+      </div>
+    </div>
+
+    <div class="result-card" id="resultCard">
+      <p class="result-label">Número escaneado</p>
+      <p class="result-number" id="resultNumber">—</p>
+    </div>
+
+    <div class="actions" id="actions" style="display:none;">
+      <button class="btn-primary" id="sendBtn">Enviar</button>
+      <button class="btn-secondary" id="rescanBtn">Escanear otro</button>
+    </div>
+
+    <p class="status" id="status"></p>
+
+    <details class="manual">
+      <summary>Ingresar número a mano</summary>
+      <div class="manual-row">
+        <input type="number" id="manualInput" min="1" max="1000" placeholder="1–1000" inputmode="numeric">
+        <button id="manualBtn">Usar</button>
+      </div>
+    </details>
+  </div>
+
+<script>
+  // Pegá acá la URL de tu implementación de Apps Script (termina en /exec).
+  const APPS_SCRIPT_URL = 'PEGA_ACA_TU_URL_DE_DEPLOY';
+
+  const readerFrame = document.getElementById('reader-frame');
+  const scanHint   = document.getElementById('scanHint');
+  const resultCard = document.getElementById('resultCard');
+  const resultNum  = document.getElementById('resultNumber');
+  const actions    = document.getElementById('actions');
+  const sendBtn    = document.getElementById('sendBtn');
+  const rescanBtn  = document.getElementById('rescanBtn');
+  const statusEl   = document.getElementById('status');
+  const manualInput= document.getElementById('manualInput');
+  const manualBtn  = document.getElementById('manualBtn');
+  const permissionGate  = document.getElementById('permissionGate');
+  const enableCameraBtn = document.getElementById('enableCameraBtn');
+  const gateText   = document.getElementById('gateText');
+
+  let html5QrCode;
+  let currentNumber = null;
+  let cameraGranted = false;
+
+  function setStatus(text, kind){
+    statusEl.textContent = text || '';
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function parseNumero(text){
+    const n = parseInt(String(text).trim(), 10);
+    if (Number.isInteger(n) && n >= 1 && n <= 1000) return n;
+    return null;
+  }
+
+  function showResult(n){
+    currentNumber = n;
+    resultNum.textContent = n;
+    resultCard.classList.add('show');
+    actions.style.display = 'flex';
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Enviar';
+    setStatus('');
+  }
+
+  function resetToScan(){
+    currentNumber = null;
+    resultCard.classList.remove('show');
+    actions.style.display = 'none';
+    manualInput.value = '';
+    setStatus('');
+    startScanner();
+  }
+
+  function onScanSuccess(decodedText){
+    const n = parseNumero(decodedText);
+    if (!n) {
+      setStatus('El código no contiene un número válido (1–1000).', 'err');
+      return;
+    }
+    if (navigator.vibrate) navigator.vibrate(80);
+    stopScanner().then(() => showResult(n));
+  }
+
+  // Pide permiso de cámara explícitamente (requiere gesto del usuario en la
+  // mayoría de los navegadores) y recién después arranca el escaneo.
+  function requestCameraAccess(){
+    enableCameraBtn.disabled = true;
+    enableCameraBtn.textContent = 'Pidiendo permiso…';
+    permissionGate.classList.remove('denied-state');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then((stream) => {
+        // Solo pedíamos el permiso; html5-qrcode abre su propio stream.
+        stream.getTracks().forEach(t => t.stop());
+        cameraGranted = true;
+        permissionGate.classList.add('hidden');
+        startScanner();
+      })
+      .catch((err) => {
+        enableCameraBtn.disabled = false;
+        enableCameraBtn.textContent = 'Reintentar';
+        if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+          permissionGate.classList.add('denied-state');
+        } else if (err && err.name === 'NotFoundError') {
+          gateText.textContent = 'No se encontró una cámara en este dispositivo.';
+        } else {
+          gateText.textContent = 'No se pudo acceder a la cámara. Probá de nuevo.';
+        }
+      });
+  }
+
+  function startScanner(){
+    if (!cameraGranted) return; // se pide desde el botón "Activar cámara"
+    scanHint.style.display = 'flex';
+    html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 230, height: 230 } },
+      onScanSuccess,
+      () => {} // ignore per-frame scan failures
+    ).catch(() => {
+      setStatus('No se pudo acceder a la cámara. Revisá los permisos.', 'err');
+    });
+  }
+
+  function stopScanner(){
+    if (html5QrCode) {
+      return html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+    }
+    return Promise.resolve();
+  }
+
+  sendBtn.addEventListener('click', () => {
+    if (currentNumber == null) return;
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Enviando…';
+    setStatus('Enviando…', 'pending');
+
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors', // Apps Script no responde con headers CORS; enviamos "a ciegas"
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ numero: currentNumber })
+    })
+      .then(() => {
+        setStatus('Enviado ✓', 'ok');
+        setTimeout(resetToScan, 1100);
+      })
+      .catch((err) => {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Reintentar';
+        setStatus('No se pudo enviar. Revisá tu conexión.', 'err');
+        console.error(err);
+      });
+  });
+
+  rescanBtn.addEventListener('click', resetToScan);
+
+  manualBtn.addEventListener('click', () => {
+    const n = parseNumero(manualInput.value);
+    if (!n){
+      setStatus('Ingresá un número entre 1 y 1000.', 'err');
+      return;
+    }
+    stopScanner().then(() => showResult(n));
+  });
+
+  enableCameraBtn.addEventListener('click', requestCameraAccess);
+</script>
+</body>
+</html>
